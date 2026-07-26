@@ -96,28 +96,55 @@ projetos/2-classificacao-cifar/
 
 ## 📝 Relatório do Candidato
 
-👤 **Nome Completo:**
+👤 **Nome Completo:** Kaique Rangel da Silva
 
 ### 1️⃣ Resumo da Arquitetura do Modelo
 
-Descreva a arquitetura da CNN implementada em `train_model.py` e a estratégia de data augmentation utilizada.
+A CNN foi construída com a Functional API do Keras e é composta por 4 blocos convolucionais, cada um contendo 2 camadas Conv2D (com BatchNormalization e ativação ReLU após cada convolução), seguidas de MaxPooling2D e Dropout. O número de filtros aumenta progressivamente a cada bloco (32 → 64 → 128 → 256), e a taxa de dropout também cresce (0.2 → 0.3 → 0.4 → 0.4) para reforçar a regularização nas camadas mais profundas.
+
+Após os blocos convolucionais, é aplicado GlobalAveragePooling2D (em vez de Flatten, para reduzir o número de parâmetros e o risco de overfitting), seguido de uma camada densa de 128 neurônios com BatchNormalization, Dropout(0.5) e, por fim, a camada de saída com 10 neurônios e ativação softmax.
+
+Todas as camadas convolucionais e densas usam kernel_initializer="he_normal" e regularização L2 (1e-4), e a camada de saída usa kernel_initializer="glorot_uniform".
+
+A estratégia de data augmentation foi incorporada diretamente ao modelo (como uma camada keras.Sequential aplicada logo após a entrada), usando: RandomFlip("horizontal"), RandomRotation(0.08), RandomZoom(0.15), RandomTranslation(0.1, 0.1) e RandomContrast(0.1). Por estar embutida no modelo, essa etapa é aplicada automaticamente apenas durante o treino (training=True), sendo ignorada na inferência — o que também simplifica a conversão para TensorFlow Lite.
 
 ### 2️⃣ Bibliotecas Utilizadas
 
-Liste as principais bibliotecas utilizadas, preferencialmente com suas versões.
+- TensorFlow / Keras (tensorflow>=2.12)
+- NumPy
 
 ### 3️⃣ Técnica de Otimização do Modelo
 
-Explique qual técnica foi utilizada para otimizar o modelo em `optimize_model.py`.
+Foi utilizada Dynamic Range Quantization, aplicada via converter.optimizations = [tf.lite.Optimize.DEFAULT] no TFLiteConverter. Essa técnica quantiza os pesos do modelo (de float32 para uma representação de menor precisão), reduzindo significativamente o tamanho do arquivo final e acelerando a inferência em dispositivos com recursos limitados, sem exigir um dataset representativo para calibração.
+
+Após a conversão, o modelo .tflite foi validado automaticamente dentro do próprio optimize_model.py, carregando-o com tf.lite.Interpreter e conferindo os shapes de entrada e saída, garantindo que o artefato de edge estava íntegro antes de ser usado na etapa de inferência.
 
 ### 4️⃣ Resultados Obtidos
 
-Informe a acurácia de validação obtida e o tamanho dos arquivos `model.h5` e `model.tflite`.
+- Acurácia de validação: 81,16%
+- Acurácia de teste: 80,29%
+- Tamanho do model.h5: 14.306,80 KB (~14 MB)
+- Tamanho do model.tflite: 1.205,10 KB (~1,2 MB)
+- Redução de tamanho após quantização: 91,58%
 
-### 5️⃣ Comentários Adicionais (Opcional)
+### 5️⃣ Comentários Adicionais
 
-Dificuldades encontradas, decisões técnicas importantes, limitações do modelo, aprendizados durante o desafio.
+O treinamento foi feito inteiramente em CPU, o que resultou em um tempo total de aproximadamente 55 minutos para as ~29 épocas executadas até o EarlyStopping interromper o treino (monitorando val_loss, com patience=8). O ReduceLROnPlateau foi essencial para destravar melhorias na segunda metade do treino: a taxa de aprendizado foi reduzida de 1e-3 para 6.25e-5 ao longo de 4 reduções, e as maiores melhorias de acurácia de validação ocorreram logo após essas reduções.
+
+A principal decisão técnica foi usar 2 convoluções por bloco (em vez de apenas 1), o que aumenta a capacidade de extração de features de cada bloco antes do downsampling, mantendo ainda assim uma arquitetura compacta (8 camadas convolucionais no total), dentro do espírito de "CNN simples" pedido no desafio, sem chegar perto da profundidade de arquiteturas como ResNet ou VGG.
+
+O run_inference.py foi fornecido como parte do template do projeto e foi utilizado sem modificações, após validado contra o model.tflite gerado.
 
 ### 6️⃣ Exemplo de Inferência
 
-Cole a saída do terminal ao rodar `run_inference.py` (predito vs. real para as 5+ amostras), e comente brevemente se houve algum caso interessante (acerto ou erro) entre as amostras testadas.
+```
+Rodando inferência em 5 amostras usando model.tflite:
+
+Amostra 1: predito=cat | real=cat
+Amostra 2: predito=ship | real=ship
+Amostra 3: predito=ship | real=ship
+Amostra 4: predito=airplane | real=airplane
+Amostra 5: predito=frog | real=frog
+```
+
+Todas as 5 amostras testadas foram classificadas corretamente, incluindo classes que costumam ser mais desafiadoras para CNNs simples no CIFAR-10 (como cat, que frequentemente é confundida com dog devido à similaridade visual entre as duas classes). Esse resultado é consistente com a acurácia de teste obtida (80,29%), mas vale notar que uma amostra maior de inferências tenderia a revelar alguns erros, já que a acurácia não é de 100%.
