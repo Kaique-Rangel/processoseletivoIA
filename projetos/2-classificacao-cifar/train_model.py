@@ -2,23 +2,11 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, regularizers
 
-# ---------------------------------------------------------------------------
-# Projeto 2 — Classificação CIFAR-10
-#
-# Requisitos (veja README.md desta pasta para detalhes completos):
-#   1. Carregar o dataset CIFAR-10 via tf.keras.datasets.cifar10
-#   2. Normalizar as imagens para [0, 1] (shape (32, 32, 3))
-#   3. Separar um conjunto de validação
-#   4. Incluir data augmentation (ex: layers.RandomFlip, RandomRotation, RandomZoom)
-#      aplicada ao conjunto de treino
-#   5. Construir uma CNN com 3-4 blocos Conv2D + BatchNormalization + MaxPooling2D,
-#      seguida de Dropout antes da camada de saída (10 classes, softmax)
-#   6. Treinar com EarlyStopping monitorando a perda de validação
-#   7. Exibir a acurácia de validação final no terminal
-#   8. Salvar o modelo treinado como "model.h5"
-# ---------------------------------------------------------------------------
-
 tf.keras.utils.set_random_seed(42)
+
+# ---------------------------------------------------------------------------
+# Projeto 2 — Classificação CIFAR-10 
+# ---------------------------------------------------------------------------
 
 # ---------------------------
 # Carregamento do dataset
@@ -63,15 +51,15 @@ L2 = regularizers.l2(1e-4)
 
 
 def conv_block(x, filters, dropout_rate):
-   
+    # 2 convs por bloco antes do pooling -> extrai mais features
     x = layers.Conv2D(filters, (3, 3), padding="same",
-                       kernel_initializer="he_normal",
+                       kernel_initializer=keras.initializers.RandomNormal(stddev=0.05),
                        kernel_regularizer=L2, use_bias=False)(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation("relu")(x)
 
     x = layers.Conv2D(filters, (3, 3), padding="same",
-                       kernel_initializer="he_normal",
+                       kernel_initializer=keras.initializers.RandomNormal(stddev=0.05),
                        kernel_regularizer=L2, use_bias=False)(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation("relu")(x)
@@ -80,8 +68,9 @@ def conv_block(x, filters, dropout_rate):
     x = layers.Dropout(dropout_rate)(x)
     return x
 
+
 # ---------------------------
-# Construção do modelo CNN
+# Construção do modelo CNN (Functional API)
 # ---------------------------
 inputs = keras.Input(shape=(32, 32, 3))
 x = data_augmentation(inputs)
@@ -96,7 +85,7 @@ x = layers.GlobalAveragePooling2D()(x)
 x = layers.Dense(
     128,
     kernel_regularizer=L2,
-    kernel_initializer="he_normal",
+    kernel_initializer=keras.initializers.RandomNormal(stddev=0.05),
     use_bias=False,
 )(x)
 x = layers.BatchNormalization()(x)
@@ -106,11 +95,11 @@ x = layers.Dropout(0.5)(x)
 outputs = layers.Dense(
     10,
     activation="softmax",
-    kernel_initializer="glorot_uniform",
+    kernel_initializer=keras.initializers.RandomNormal(stddev=0.05),
 )(x)
 
 model = keras.Model(inputs, outputs)
-model.summary(line_length=120)
+model.summary()
 
 # ---------------------------
 # Compilação do modelo

@@ -93,7 +93,6 @@ projetos/2-classificacao-cifar/
 - **Documentação** — preenchimento adequado do relatório abaixo
 
 ---
-
 ## 📝 Relatório do Candidato
 
 👤 **Nome Completo:** Kaique Rangel da Silva
@@ -104,13 +103,13 @@ A CNN foi construída com a Functional API do Keras e é composta por 4 blocos c
 
 Após os blocos convolucionais, é aplicado GlobalAveragePooling2D (em vez de Flatten, para reduzir o número de parâmetros e o risco de overfitting), seguido de uma camada densa de 128 neurônios com BatchNormalization, Dropout(0.5) e, por fim, a camada de saída com 10 neurônios e ativação softmax.
 
-Todas as camadas convolucionais e densas usam kernel_initializer="he_normal" e regularização L2 (1e-4), e a camada de saída usa kernel_initializer="glorot_uniform".
+Todas as camadas convolucionais e densas usam kernel_initializer=RandomNormal(stddev=0.05) e regularização L2 (1e-4). Esse inicializador foi escolhido no lugar de he_normal/glorot_uniform porque, durante os testes no pipeline de CI (GitHub Actions), o model.h5 salvo por uma versão mais nova do Keras não conseguia ser carregado por uma versão mais antiga presente no ambiente de validação — o erro ocorria na deserialização da classe VarianceScaling (base de HeNormal e GlorotUniform), que passou a serializar parâmetros (input_axes, output_axes) não reconhecidos por versões anteriores. Trocar para RandomNormal, que não pertence a essa família de inicializadores, eliminou o problema de compatibilidade sem impacto relevante na convergência do treino, já que todas as camadas possuem BatchNormalization logo em seguida.
 
 A estratégia de data augmentation foi incorporada diretamente ao modelo (como uma camada keras.Sequential aplicada logo após a entrada), usando: RandomFlip("horizontal"), RandomRotation(0.08), RandomZoom(0.15), RandomTranslation(0.1, 0.1) e RandomContrast(0.1). Por estar embutida no modelo, essa etapa é aplicada automaticamente apenas durante o treino (training=True), sendo ignorada na inferência — o que também simplifica a conversão para TensorFlow Lite.
 
 ### 2️⃣ Bibliotecas Utilizadas
 
-- TensorFlow / Keras (tensorflow>=2.12)
+- TensorFlow / Keras (tensorflow==2.21.0)
 - NumPy
 
 ### 3️⃣ Técnica de Otimização do Modelo
@@ -121,9 +120,9 @@ Após a conversão, o modelo .tflite foi validado automaticamente dentro do pró
 
 ### 4️⃣ Resultados Obtidos
 
-- Acurácia de validação: 81,16%
-- Acurácia de teste: 80,29%
-- Tamanho do model.h5: 14.306,80 KB (~14 MB)
+- Acurácia de validação: 82,74%
+- Acurácia de teste: 81,66%
+- Tamanho do model.h5: 14.306,73 KB (~14 MB)
 - Tamanho do model.tflite: 1.205,10 KB (~1,2 MB)
 - Redução de tamanho após quantização: 91,58%
 
@@ -131,9 +130,11 @@ Após a conversão, o modelo .tflite foi validado automaticamente dentro do pró
 
 O treinamento foi feito inteiramente em CPU, o que resultou em um tempo total de aproximadamente 55 minutos para as ~29 épocas executadas até o EarlyStopping interromper o treino (monitorando val_loss, com patience=8). O ReduceLROnPlateau foi essencial para destravar melhorias na segunda metade do treino: a taxa de aprendizado foi reduzida de 1e-3 para 6.25e-5 ao longo de 4 reduções, e as maiores melhorias de acurácia de validação ocorreram logo após essas reduções.
 
-A principal decisão técnica foi usar 2 convoluções por bloco (em vez de apenas 1), o que aumenta a capacidade de extração de features de cada bloco antes do downsampling, mantendo ainda assim uma arquitetura compacta (8 camadas convolucionais no total), dentro do espírito de "CNN simples" pedido no desafio, sem chegar perto da profundidade de arquiteturas como ResNet ou VGG.
+A principal decisão técnica foi usar 2 convoluções por bloco (em vez de apenas 1), o que aumenta a capacidade de extração de features de cada bloco antes do downsampling, mantendo ainda assim uma arquitetura compacta (8 camadas convolucionais no total) — dentro do espírito de "CNN simples" pedido no desafio, sem chegar perto da profundidade de arquiteturas como ResNet ou VGG.
 
 O run_inference.py foi fornecido como parte do template do projeto e foi utilizado sem modificações, após validado contra o model.tflite gerado.
+
+Durante a etapa de validação automática (CI/GitHub Actions), o carregamento do model.h5 falhou com o erro `HeNormal.__init__() got an unexpected keyword argument 'input_axes'`. A causa foi um descompasso de versões do Keras entre o ambiente local (usado para treinar e salvar o modelo) e o ambiente de validação: versões mais novas do Keras serializam o inicializador HeNormal (e, por herdarem da mesma classe base VarianceScaling, também GlorotUniform) com parâmetros adicionais que versões mais antigas não reconhecem ao desserializar. A correção foi trocar o kernel_initializer de todas as camadas para RandomNormal(stddev=0.05), que não pertence a essa família e serializa de forma estável entre versões, eliminando o problema sem necessidade de alterar a arquitetura do modelo. Também foi fixada a versão exata do TensorFlow no requirements.txt (tensorflow==2.21.0) para reduzir o risco de outras incompatibilidades de ambiente.
 
 ### 6️⃣ Exemplo de Inferência
 
@@ -143,8 +144,8 @@ Rodando inferência em 5 amostras usando model.tflite:
 Amostra 1: predito=cat | real=cat
 Amostra 2: predito=ship | real=ship
 Amostra 3: predito=ship | real=ship
-Amostra 4: predito=airplane | real=airplane
+Amostra 4: predito=ship | real=airplane
 Amostra 5: predito=frog | real=frog
 ```
 
-Todas as 5 amostras testadas foram classificadas corretamente, incluindo classes que costumam ser mais desafiadoras para CNNs simples no CIFAR-10 (como cat, que frequentemente é confundida com dog devido à similaridade visual entre as duas classes). Esse resultado é consistente com a acurácia de teste obtida (80,29%), mas vale notar que uma amostra maior de inferências tenderia a revelar alguns erros, já que a acurácia não é de 100%.
+4 das 5 amostras testadas foram classificadas corretamente (80%, em linha com a acurácia de teste obtida). O único erro foi a amostra 4, onde o modelo previu "ship" para uma imagem cuja classe real é "airplane" — uma confusão que faz sentido visualmente, já que aviões e navios em baixa resolução (32x32) costumam compartilhar fundo predominantemente azul/céu ou água, além de silhuetas alongadas, o que pode levar a CNN a confundir as duas classes nesse tipo de amostra.
