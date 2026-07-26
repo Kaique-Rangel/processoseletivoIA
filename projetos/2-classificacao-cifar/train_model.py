@@ -110,7 +110,7 @@ outputs = layers.Dense(
 )(x)
 
 model = keras.Model(inputs, outputs)
-model.summary()
+model.summary(line_length=120)
 
 # ---------------------------
 # Compilação do modelo
